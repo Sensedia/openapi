@@ -3,7 +3,7 @@ info:
   title: API Treasure Titles - Open Finance Brasil
   description: |
     API de informações de operações de Títulos do Tesouro Direto Open Finance Brasil – Fase 4. API que retorna informações de operações de investimento do tipo Títulos do Tesouro Direto mantidas nas instituições transmissoras por seus clientes, incluindo dados como informações do produto, quantidade, saldos em posição do cliente e movimentações financeiras. Não possui segregação entre pessoa natural e pessoa jurídica. Requer consentimento do cliente para todos os endpoints. Devem ser considerados como escopo de exposição todos os títulos ofertados pelo Tesouro Direto. A exposição se dará por cada operação de títulos do Tesouro Direto contratada pelo cliente.
-  version: 1.0.0-rc3.0
+  version: 1.0.0
   license:
     name: Apache 2.0
     url: 'https://www.apache.org/licenses/LICENSE-2.0'
@@ -410,7 +410,7 @@ components:
           items:
             $ref: '#/components/schemas/ResponseTreasureTitlesListProductData'
         links:
-          $ref: '#/components/schemas/TreasureTitlesLinks'
+          $ref: '#/components/schemas/TreasureTitlesProductListLinks'
         meta:
           $ref: '#/components/schemas/TreasureTitlesMeta'
       additionalProperties: false
@@ -473,12 +473,47 @@ components:
           description: URI da próxima página dessa lista de resultados. Restrição - Obrigatório quando não for a última página da resposta
           example: 'https://api.banco.com.br/open-banking/api/v1/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
-    CurrencyCode:
-      type: string
-      pattern: '^[A-Z]{3}$'
-      maxLength: 3
-      description: 'Moeda referente ao valor monetário, seguindo o modelo ISO-4217.'
-      example: BRL
+    TreasureTitlesProductListLinks:
+      type: object
+      description: Referências para outros recusos da API requisitada.
+      required:
+        - self
+      properties:
+        self:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: URI completo que gerou a resposta atual.
+          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
+        first:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: URI da primeira página que originou essa lista de resultados. Restrição - Obrigatório quando não for a primeira página da resposta
+          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
+        prev:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: "URI da página anterior dessa lista de resultados. Restrição - \tObrigatório quando não for a primeira página da resposta"
+          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
+        next:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: URI da próxima página dessa lista de resultados. Restrição - Obrigatório quando não for a última página da resposta
+          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
+        last:
+          type: string
+          format: uri
+          maxLength: 2000
+          description: URI da última página dessa lista de resultados. Restrição - Obrigatório quando não for a última página da resposta.
+          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%.\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%\+.~#?&\/\/=]*)$'
     ResponseTreasureTitlesBalances:
       type: object
       required:
@@ -589,26 +624,7 @@ components:
         investmentId:
           $ref: '#/components/schemas/TreasureTitlesInvestmentId'
       additionalProperties: false
-    ResponseTreasureTitlesProductList:
-      $ref: '#/components/schemas/ResponseTreasureTitlesListProduct'
     ResponseTreasureTitlesProductTransactions:
-      type: object
-      required:
-        - data
-        - links
-        - meta
-      properties:
-        data:
-          type: array
-          minItems: 0
-          items:
-            $ref: '#/components/schemas/TreasureTitlesProductTransaction'
-        links:
-          $ref: '#/components/schemas/TreasureTitlesLinks'
-        meta:
-          $ref: '#/components/schemas/TreasureTitlesMetaTransaction'
-      additionalProperties: false
-    ResponseTreasureTitlesProductTransactionsCurrent:
       type: object
       required:
         - data
@@ -663,7 +679,7 @@ components:
         quantity:
           $ref: '#/components/schemas/TreasureTitlesQuantity'
     TreasureTitlesBlockedBalance:
-      description: 'Valor não disponível para movimentação naquele momento por qualquer motivo (bloqueio judicial, bloqueio em garantia, entre outros).'
+      description: Valor não disponível para movimentação naquele momento por qualquer motivo (bloqueio judicial, bloqueio em garantia, entre outros). Prazo de carência não é considerado como bloqueio.
       type: object
       required:
         - amount
@@ -739,19 +755,6 @@ components:
       example: '1000.04'
       type: string
       format: double
-    TreasureTitlesFinancialTransactionTaxCurrency:
-      description: 'Moeda referente ao valor monetário, seguindo o modelo ISO-4217'
-      maxLength: 3
-      pattern: '^[A-Z]{3}$'
-      example: BRL
-      type: string
-    TreasureTitlesFinancialTransactionTaxFinancialTransactionTaxAmount:
-      description: Valor relacionado ao objeto
-      maxLength: 20
-      pattern: '^\d{1,15}\.\d{2,4}$'
-      example: '1000.04'
-      type: string
-      format: double
     TreasureTitlesGrossAmount:
       description: |
         Valor do investimento anterior à dedução de impostos, taxas e
@@ -812,19 +815,6 @@ components:
           $ref: '#/components/schemas/TreasureTitlesCurrency'
     TreasureTitlesIncomeTaxAmount:
       description: Valor relacionado ao objeto.
-      maxLength: 20
-      pattern: '^\d{1,15}\.\d{2,4}$'
-      example: '1000.04'
-      type: string
-      format: double
-    TreasureTitlesIncomeTaxCurrency:
-      description: 'Moeda referente ao valor monetário, seguindo o modelo ISO-4217'
-      maxLength: 3
-      pattern: '^[A-Z]{3}$'
-      example: BRL
-      type: string
-    TreasureTitlesIncomeTaxIncomeTaxAmount:
-      description: Valor relacionado ao objeto
       maxLength: 20
       pattern: '^\d{1,15}\.\d{2,4}$'
       example: '1000.04'
@@ -911,6 +901,7 @@ components:
 
         [Restrição] Campo de preenchimento obrigatório pelas participantes quando o campo 'indexer' for preenchido de forma diferente de ‘PRE FIXADO’.
       maxLength: 8
+      minLength: 8
       pattern: '^\d{1}\.\d{6}$'
       example: '1.100000'
       type: string
@@ -921,6 +912,7 @@ components:
 
         [Restrição] Campo de preenchimento obrigatório pelas participantes quando o campo 'indexer' for preenchido com o valor ‘PRE FIXADO’.
       maxLength: 8
+      minLength: 8
       pattern: '^\d{1}\.\d{6}$'
       example: '0.300000'
       type: string
@@ -998,6 +990,7 @@ components:
 
         [Restrição] Campo de preenchimento obrigatório pelas participantes quando o campo 'type' for preenchido com o valor 'ENTRADA'.
       maxLength: 8
+      minLength: 8
       pattern: '^\d{1}\.\d{6}$'
       example: '0.300000'
       type: string
@@ -1076,8 +1069,6 @@ components:
       example: '42.25'
       type: string
       format: double
-    TreasureTitlesTransactionsLinks:
-      $ref: '#/components/schemas/TreasureTitlesLinks'
     TreasureTitlesTransactionType:
       description: 'Compra, venda, cancelamento, vencimento, pagamento de juros, amortização, transferência de titularidade, transferência de custódia e outros.'
       example: AMORTIZACAO
