@@ -86,8 +86,9 @@ info:
       ```
     - A instituição transmissora deve validar o preenchimento correto desses agrupamentos no momento da geração do consentimento.
     - Caso a instiuição receptora envie permissões divergentes ao agrupamento especificado na tabela, a transmissora deve rejeitar o pedido da receptora dando retorno HTTP Status Code 400.
-    - A transmissora deve retornar, da lista de permissions requisitadas, apenas o subconjunto de permissions por ela suportada, removendo da lista as permissions de produtos não suportados e retornando HTTP Status Code 201. Caso não restem permissões funcionais, a instituição transmissora deve retornar o erro HTTP Code "422 Unprocessable Entity".
-  version: 2.1.0-rc2.0
+    - Caso o cliente tenha selecionado na receptora uma opção de produtos agrupados, a transmissora deve retornar todas as permissionsreferentes ao agrupamento, mesmo que não os comercialize. Por exemplo, o cliente seleciona na receptora a opção "Operações de Crédito". Nessa situação, a transmissora deve retornar todas as permissionsreferentes a esse agrupamento de produtos: Empréstimos, Financiamentos, Direitos Creditórios e Adiantamento a depositante.
+    - A transmissora deve retornar, da lista de permissions requisitadas, apenas o subconjunto de permissions por ela suportada, removendo da lista as permissions de produtos não suportados e retornando HTTP Status Code 201. A única exceção a este comportamento são os casos de produtos agrupados, como Operações de crédito e Investimentos, para os quais todas as permissões do agrupamento devem ser mantidas. Caso não restem permissões funcionais, a instituição transmissora deve retornar o erro HTTP Code "422 Unprocessable Entity".
+  version: 3.0.0-beta.1
   license:
     name: Apache 2.0
     url: 'http://www.apache.org/licenses/LICENSE-2.0'
@@ -96,9 +97,9 @@ info:
     email: gt-interfaces@openbankingbr.org
     url: 'https://openbanking-brasil.github.io/areadesenvolvedor/'
 servers:
-  - url: 'https://api.banco.com.br/open-banking/consents/v2'
+  - url: 'https://api.banco.com.br/open-banking/consents/v3'
     description: Servidor de Produção
-  - url: 'https://apih.banco.com.br/open-banking/consents/v2'
+  - url: 'https://apih.banco.com.br/open-banking/consents/v3'
     description: Servidor de Homologação
 tags:
   - name: Consents
