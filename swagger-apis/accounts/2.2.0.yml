@@ -41,7 +41,8 @@ info:
       - permissions:
         - GET: **ACCOUNTS_OVERDRAFT_LIMITS_READ**
 
-    ## Tabela: Data de imutabilidade por tipo de transação
+    ## Data de imutabilidade por tipo de transação​
+    O identificador de transações de contas é de envio obrigatório no Open Finance Brasil. De acordo com o tipo da transação deve haver o envio de um identificador único, estável e imutável em D0 ou D+1, conforme tabela abaixo
     ```
     |---------------------------------------|-------------------------|-----------------------|
     | Tipo de Transação                     | Data da Obrigatoriedade | Data da Imutabilidade |
@@ -83,7 +84,9 @@ info:
     | OUTROS                                | DO                      | D+1                   |
     |---------------------------------------|-------------------------|-----------------------|
     ```
-  version: 2.1.0-rc.2
+
+    Para consultar as regras aplicáveis ao comportamento do transacionID de acordo com o status da transação, consultar a página [Orientações - Contas](https://openfinancebrasil.atlassian.net/wiki/spaces/OF/pages/193658890)
+  version: 2.2.0
   license:
     name: Apache 2.0
     url: 'https://www.apache.org/licenses/LICENSE-2.0'
@@ -698,7 +701,6 @@ components:
         - transactionName
         - type
         - transactionAmount
-        - transactionDate
         - transactionDateTime
       properties:
         transactionId:
@@ -725,26 +727,19 @@ components:
           $ref: '#/components/schemas/EnumTransactionTypes'
         transactionAmount:
           $ref: '#/components/schemas/AccountTransactionsDataAmount'
-        transactionDate:
-          type: string
-          maxLength: 10
-          pattern: '^(\d{4})-(1[0-2]|0?[1-9])-(3[01]|[12][0-9]|0?[1-9])$'
-          description: |
-            Se indicador de transação: TRANSACAO_EFETIVADA - corresponde a data de lançamento da transação LANCAMENTO_FUTURO - corresponde a data prevista de efetivação da transação.
-          example: '2021-01-07'
         transactionDateTime:
           type: string
           maxLength: 24
           pattern: '(^(\d{4})-(1[0-2]|0?[1-9])-(3[01]|[12][0-9]|0?[1-9])T(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)\.(?:[0-9]){3}Z$)'
           description: |
-            Data e hora original da transação. No primeiro momento, as instituições poderão complementar informações faltantes com 0 (Por exemplo: 2016-01-29T00:00:00.000Z). A partir de 31/01/2024 é esperado que o campo seja preenchido com informações reais.
+            Data e hora original da transação.
           example: '2016-01-29T12:29:03.374Z'
         partieCnpjCpf:
           type: string
           maxLength: 14
           pattern: '^\d{11}$|^\d{14}$'
           description: |
-            Identificação da pessoa envolvida na transação: pagador ou recebedor (Preencher com o CPF ou CNPJ, sem formatação). Exceção a obrigatoriedade de envio: Tipo de transação TED quando se tratar de Transferência entre Reservas (STR0004) e Recebimento de recursos judiciais (STR0051R2).
+            Identificação da pessoa envolvida na transação: pagador ou recebedor (Preencher com o CPF ou CNPJ, sem formatação). Com a IN BCB nº 371, a partir de 02/05/23, o envio das informações de identificação de contraparte tornou-se obrigatória para transações de pagamento. Para maiores detalhes, favor consultar a página `Orientações - Contas`.
           example: '43908445778'
         partiePersonType:
           $ref: '#/components/schemas/EnumPartiePersonType'
@@ -885,35 +880,35 @@ components:
           format: uri
           maxLength: 2000
           description: URI completo que gerou a resposta atual.
-          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          example: 'https://api.banco.com.br/open-banking/api/v2/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
         first:
           type: string
           format: uri
           maxLength: 2000
           description: URI da primeira página que originou essa lista de resultados. Restrição - Obrigatório quando não for a primeira página da resposta
-          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          example: 'https://api.banco.com.br/open-banking/api/v2/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
         prev:
           type: string
           format: uri
           maxLength: 2000
           description: "URI da página anterior dessa lista de resultados. Restrição - \tObrigatório quando não for a primeira página da resposta"
-          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          example: 'https://api.banco.com.br/open-banking/api/v2/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
         next:
           type: string
           format: uri
           maxLength: 2000
           description: URI da próxima página dessa lista de resultados. Restrição - Obrigatório quando não for a última página da resposta
-          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          example: 'https://api.banco.com.br/open-banking/api/v2/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
         last:
           type: string
           format: uri
           maxLength: 2000
           description: URI da última página dessa lista de resultados. Restrição - Obrigatório quando não for a última página da resposta
-          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          example: 'https://api.banco.com.br/open-banking/api/v2/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
     TransactionsLinks:
       type: object
@@ -926,28 +921,28 @@ components:
           format: uri
           maxLength: 2000
           description: URI completo que gerou a resposta atual.
-          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          example: 'https://api.banco.com.br/open-banking/api/v2/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
         first:
           type: string
           format: uri
           maxLength: 2000
           description: URI da primeira página que originou essa lista de resultados. Restrição - Obrigatório quando não for a primeira página da resposta
-          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          example: 'https://api.banco.com.br/open-banking/api/v2/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
         prev:
           type: string
           format: uri
           maxLength: 2000
           description: "URI da página anterior dessa lista de resultados. Restrição - \tObrigatório quando não for a primeira página da resposta"
-          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          example: 'https://api.banco.com.br/open-banking/api/v2/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
         next:
           type: string
           format: uri
           maxLength: 2000
           description: URI da próxima página dessa lista de resultados. Restrição - Obrigatório quando não for a última página da resposta
-          example: 'https://api.banco.com.br/open-banking/api/v1/resource'
+          example: 'https://api.banco.com.br/open-banking/api/v2/resource'
           pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
     Meta:
       type: object
