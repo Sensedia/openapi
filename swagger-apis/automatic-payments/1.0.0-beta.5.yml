@@ -8,7 +8,7 @@ info:
     # Orientações
     - `CONTA`, referente às instituições detentoras de conta participantes do Open Finance Brasil;
     - `PAGTO`, referente às instituições iniciadoras de pagamento participantes do Open Finance Brasil. 
-    Os tokens utilizados para consumo nos endpoints de consentimentos devem possuir o scope payments e os endpoints de pagamentos recorrentes devem possuir os scopes openid e payments. 
+    Os tokens utilizados para consumo nos endpoints de consentimentos devem possuir o scope recurringPayments e os endpoints de pagamentos recorrentes devem possuir os scopes openid e recurringPayments. 
     Esta API não requer a implementação de permissions para sua utilização. 
     Todas as requisições e respostas devem ser assinadas seguindo o protocolo estabelecido na sessão Assinaturas do guia de segurança.
 
@@ -135,7 +135,7 @@ info:
         - OwnerStatistics.Spi.FraudMarkers.ScammerAccounts.d90
         - OwnerStatistics.Spi.FraudMarkers.OtherFrauds.d90
         - OwnerStatistics.Spi.FraudMarkers.UnknownFrauds.d90
-  version: 1.0.0-beta.2
+  version: 1.0.0-beta.5
   license:
     name: Apache 2.0
     url: 'https://www.apache.org/licenses/LICENSE-2.0'
@@ -206,7 +206,7 @@ paths:
                 $ref: '#/components/schemas/ResponseError'
       security:
         - OAuth2ClientCredentials:
-            - recurringPayments
+            - recurring-payments
   '/recurring-consents/{recurringConsentId}':
     get:
       tags:
@@ -250,14 +250,14 @@ paths:
                 $ref: '#/components/schemas/ResponseError'
       security:
         - OAuth2ClientCredentials:
-            - recurringPayments
+            - recurring-payments
     patch:
       tags:
         - Recurring Consents
-      summary: Revoga ou edita um consentimento.
+      summary: Rejeita, revoga ou edita um consentimento.
       operationId: automaticPaymentsPatchRecurringConsentsConsentId
       description: |
-        Método para revogar ou editar um consentimento de longa duração:  
+        Método para rejeitar, revogar ou editar um consentimento de longa duração:  
         1 - Informações sobre a revogação:
         - Caso bem sucedido, o consentimento vai para o status “REVOKED”;
         - Apenas consentimentos com status “AUTHORISED” podem ser revogados;
@@ -265,8 +265,13 @@ paths:
         solicitação da revogação) deverão ser mantidos. Pagamentos agendados para ocorrer após esse período devem ser cancelados.
         - Demais orientações referentes a revogação podem ser encontrados no header da API, tópico “Validações”, item 3.
 
-        2 – Informações sobre a edição: 
-        - Os campos que são passíveis de edição e suas regras podem ser encontrados através do [link](https://openfinancebrasil.atlassian.net/wiki/spaces/OF/pages/198410772).
+        2 - Informações sobre a edição: 
+        - Os campos que são passíveis de edição e suas regras podem ser encontrados através do [link](https://openfinancebrasil.atlassian.net/wiki/spaces/OF/pages/198410772);
+        - A edição é possível apenas em casos de consentimento para Pix Automático (“automatic” escolhido no oneOf do objeto “recurringConfiguration”);
+        - O envio do item "/data/creditors/name" atualizará o nome do recebedor em todos os elementos do array.
+
+        3 - Informações sobre a rejeição:  
+        - Caso haja necessidade de cancelamento de um consentimento ainda não autorizado, o iniciador poderá chamar o endpoint para mover o consentimento para REJECTED.
       parameters:
         - $ref: '#/components/parameters/Authorization'
         - $ref: '#/components/parameters/xCustomerUserAgent'
@@ -313,7 +318,7 @@ paths:
                 $ref: '#/components/schemas/ResponseError'
       security:
         - OAuth2ClientCredentials:
-            - recurringPayments
+            - recurring-payments
   /pix/recurring-payments:
     post:
       tags:
@@ -367,11 +372,11 @@ paths:
       security:
         - OAuth2AuthorizationCode:
             - openid
-            - 'recurringConsent:recurringConsentId'
-            - recurringPayments
+            - 'recurring-consent:recurringConsentId'
+            - recurring-payments
         - NonRedirectAuthorizationCode:
             - openid
-            - recurringPayments
+            - recurring-payments
             - 'enrollment:enrollmentId'
             - nrp-consents
     get:
@@ -420,7 +425,7 @@ paths:
                 $ref: '#/components/schemas/ResponseError'
       security:
         - OAuth2ClientCredentials:
-            - recurringPayments
+            - recurring-payments
   '/pix/recurring-payments/{recurringPaymentId}':
     get:
       tags:
@@ -464,11 +469,11 @@ paths:
                 $ref: '#/components/schemas/ResponseError'
       security:
         - OAuth2ClientCredentials:
-            - recurringPayments
+            - recurring-payments
     patch:
       tags:
         - Recurring Payments
-      summary: Atualização do Pagamento Recorrente.
+      summary: Cancelamento de solicitação de pagamento automático.
       operationId: automaticPaymentsPatchPixRecurringPaymentsPaymentId
       description: |
         Esse endpoint deve ser usado para cancelar as transações que estejam em uma das seguintes situações: 
@@ -528,7 +533,7 @@ paths:
                 $ref: '#/components/schemas/ResponseError'
       security:
         - OAuth2ClientCredentials:
-            - recurringPayments
+            - recurring-payments
 components:
   schemas:
     ResponseErrorCreateConsent:
@@ -813,10 +818,8 @@ components:
           description: Objeto contendo as informações de consentimento para a iniciação de pagamento individual.
           required:
             - loggedUser
-            - businessEntity
             - creditors
             - startDateTime
-            - expirationDateTime
             - recurringConfiguration
           properties:
             loggedUser:
@@ -846,13 +849,52 @@ components:
               pattern: '[\w\W\s]*'
               maxLength: 140
             debtorAccount:
-              $ref: '#/components/schemas/DebtorAccount'
+              type: object
+              description: |
+                Objeto que contém a identificação da conta de origem do pagador.  
+                As informações quanto à conta de origem do pagador poderão ser trazidas no consentimento para a detentora, caso a iniciadora tenha coletado essas informações do cliente. Do contrário, será coletada na detentora e trazida para a iniciadora como resposta à criação do pagamento.
+              required:
+                - ispb
+                - number
+                - accountType
+              properties:
+                ispb:
+                  type: string
+                  minLength: 8
+                  maxLength: 8
+                  pattern: '^[0-9]{8}$'
+                  example: '12345678'
+                  description: |
+                    Deve ser preenchido com o ISPB (Identificador do Sistema de Pagamentos Brasileiros) do participante do SPI (Sistema de pagamentos instantâneos) somente com números.
+                issuer:
+                  type: string
+                  minLength: 1
+                  maxLength: 4
+                  pattern: '^[0-9]{1,4}$'
+                  example: '1774'
+                  description: |
+                    Código da Agência emissora da conta sem dígito. 
+                    (Agência é a dependência destinada ao atendimento aos clientes, ao público em geral e aos associados de cooperativas de crédito, 
+                    no exercício de atividades da instituição, não podendo ser móvel ou transitória).
+                    
+                    [Restrição] Preenchimento obrigatório para os seguintes tipos de conta: CACC (CONTA_DEPOSITO_A_VISTA) e SVGS (CONTA_POUPANCA).
+                number:
+                  type: string
+                  minLength: 1
+                  maxLength: 20
+                  pattern: '^[0-9]{1,20}$'
+                  example: '1234567890'
+                  description: |
+                    Deve ser preenchido com o número da conta transacional do usuário pagador, com dígito verificador (se este existir), 
+                    se houver valor alfanumérico, este deve ser convertido para 0.
+                accountType:
+                  $ref: '#/components/schemas/EnumAccountTypeConsents'
             recurringConfiguration:
               type: object
               description: Campo destinado a configuração dos diferentes produtos de pagamentos recorrentes.
               oneOf:
                 - $ref: '#/components/schemas/Automatic'
-                - $ref: '#/components/schemas/PostSweeping'
+                - $ref: '#/components/schemas/Sweeping'
                 - $ref: '#/components/schemas/Vrp'
     CreateRecurringPixPayment:
       type: object
@@ -865,13 +907,13 @@ components:
       type: object
       description: Objeto contendo dados do pagamento e do recebedor (creditor).
       required:
-        - recurringConsentId
         - endToEndId
         - date
         - payment
         - cnpjInitiator
         - ibgeTownCode
         - localInstrument
+        - document
       properties:
         recurringConsentId:
           type: string
@@ -887,6 +929,8 @@ components:
             - o identificador associado ao namespace da instituição transmissora (bancoex)
             - o identificador específico dentro do namespace (C1DD33123).
             Informações mais detalhadas sobre a construção de namespaces devem ser consultadas na [RFC8141](https://tools.ietf.org/html/rfc8141).
+
+            [Restrição] Este campo é de preenchimento obrigatório quando o valor do campo authorisationFlow for igual a FIDO_FLOW.
         endToEndId:
           $ref: '#/components/schemas/EndToEndId'
         date:
@@ -971,6 +1015,27 @@ components:
             Trata-se de um identificador de transação que deve ser retransmitido intacto pelo PSP do pagador ao gerar a ordem de pagamento. 
             Essa informação permitirá ao recebedor identificar e correlacionar a transferência, quando recebida, com a apresentação das instruções ao pagador. 
             Os caracteres permitidos no contexto do Pix para o campo txid (EMV 62-05) são:Letras minúsculas, de 'a' a 'z' Letras maiúsculas, de 'A' a 'z' Dígitos decimais, de '0' a '9'.
+        document:
+          type: object
+          description: Informações do documento identificador.
+          required:
+            - identification
+            - rel
+          properties:
+            identification:
+              type: string
+              pattern: ^(?:\d{11}|\d{14})$
+              minLength: 11
+              maxLength: 14
+              example: '11111111111111'
+              description: Número do documento de identificação oficial do titular pessoa natural ou jurídica.
+            rel:
+              type: string
+              enum:
+                - CPF
+                - CNPJ
+              example: 'CNPJ'
+              description: Tipo do documento de identificação oficial do titular pessoa natural ou jurídica.
     RiskSignalsPayments:
       type: object
       description: |
@@ -1108,7 +1173,6 @@ components:
           type: object
           required:
             - lastLoginDateTime
-            - pixKeyRegistrationDateTime
           description: |
             Representa a coleta de sinais de risco com a presença do usuário
 
@@ -1122,7 +1186,10 @@ components:
             pixKeyRegistrationDateTime:
               type: string
               format: date-time
-              description: Data e hora de cadastro da chave Pix do recebedor na iniciadora
+              description: |
+                Data e hora de cadastro da chave Pix do recebedor na iniciadora
+
+                [Restrição] Campo obrigatório a ser enviado, caso o valor do campo `/data/localInstrument` seja igual a `DICT` ou `INIC`.
               pattern: '^(\d{4})-(1[0-2]|0?[1-9])-(3[01]|[12][0-9]|0?[1-9])T(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)Z$'
     RiskSignalsConsents:
       type: object
@@ -1139,7 +1206,7 @@ components:
       description: |
         Sinais de risco para iniciação de pagamentos automáticos
 
-        [Restrição] Deve ser enviado quando o consentimento for para o produto Sweeping Accounts (O objeto "/data/recurringConfiguration/sweeping" usado no oneOf)
+        [Restrição] Deve ser enviado quando o consentimento for para o produto Pix Automático (O objeto "/data/recurringConfiguration/automatic" usado no oneOf). Só estará presente após a primeira edição do consentimento de longa duração.
       properties:
         deviceId:
           type: string
@@ -1424,10 +1491,8 @@ components:
         Do contrário, será coletada na detentora e trazida para a iniciadora como resposta à criação do pagamento.  
       required:
         - ispb
-        - issuer
         - number
         - accountType
-        - ibgeTownCode
       properties:
         ispb:
           type: string
@@ -1466,12 +1531,11 @@ components:
           pattern: '^\d{7}$'
           example: '5300108'
           description: |
-            O campo ibgeTownCode no arranjo Pix, tem o mesmo comportamento que o campo codMun descrito no item 1.6.6 do manual do Pix, conforme segue:
-            1. Caso a informação referente ao município não seja enviada, o PSP do recebedor assumirá que não existem feriados estaduais e municipais no período em questão;
-        overdraftLimit:
-          type: boolean
-          example: true
-          description: Indica se o usuário pagador autorizou a utilização de limite na sua conta para realização de pagamentos
+            Campo utilizado pela iniciadora para cálculo do dia útil de liquidação do pagamento (vide especificação do endToEndId) baseado no município de cadastro do usuário pagador no detentor.
+
+            [Restrições]
+            - Campo obrigatório que deverá ser retornado quando o consentimento estiver ou passar pelo status AUTHORISED;
+            - Campo obrigatório quando o oneOf utilizado do recurringConfiguration for “automatic”. 
     EndToEndId:
       type: string
       minLength: 32
@@ -1721,8 +1785,6 @@ components:
           $ref: '#/components/schemas/ConsentRejectionReason'
     ConsentRejection:
       type: object
-      required:
-        - status
       properties:
         status:
           type: string
@@ -1763,6 +1825,56 @@ components:
               $ref: '#/components/schemas/ConsentRejectionReason'
         riskSignals:
           $ref: '#/components/schemas/RiskSignalsConsents'
+        creditors:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            description: Objeto contendo os dados do recebedor (creditor).
+            properties:
+              name:
+                type: string
+                pattern: ^([A-Za-zÀ-ÖØ-öø-ÿ,.@:&*+_<>()!?/\\$%\d' -]+)$
+                maxLength: 120
+                example: Marco Antonio de Brito
+                description: |
+                  Em caso de pessoa natural deve ser informado o nome completo do titular da conta do recebedor.  
+                  Em caso de pessoa jurídica deve ser informada a razão social ou o nome fantasia da conta do recebedor.
+        startDateTime:
+          description: Data e hora em que o consentimento deve passar a ser válido. Uma string com data e hora conforme especificação [RFC-3339](https://datatracker.ietf.org/doc/html/rfc3339), sempre com a utilização de timezone UTC(UTC time format).
+          type: string
+          format: date-time
+          example: '2021-05-21T08:30:00Z'
+          pattern: '^(\d{4})-(1[0-2]|0?[1-9])-(3[01]|[12][0-9]|0?[1-9])T(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)Z$'
+          maxLength: 20
+        expirationDateTime:
+          description: Data e hora em que o consentimento deve deixar de ser válido. Uma string com data e hora conforme especificação [RFC-3339](https://datatracker.ietf.org/doc/html/rfc3339), sempre com a utilização de timezone UTC(UTC time format).
+          type: string
+          format: date-time
+          example: '2021-05-21T08:30:00Z'
+          pattern: '^(\d{4})-(1[0-2]|0?[1-9])-(3[01]|[12][0-9]|0?[1-9])T(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)Z$'
+          maxLength: 20
+        automatic:
+          type: object
+          description: Definição da configuração de recorrência para pagamentos automáticos
+          properties:
+            transactionLimit:
+              type: string
+              pattern: '^((\d{1,16}\.\d{2}))$'
+              minLength: 4
+              maxLength: 19
+              example: '1000000.12'
+              description: Valor da transação com 2 casas decimais.
+            dayOfMonth:
+              type: integer
+              format: int32
+              minimum: 1
+              maximum: 31
+              example: 10
+              description: |
+                Dia fixo do mês que está prevista a transação.
+
+                [Restrição] Campo deve ser enviado quando o campo `/data/recurringConfiguration/automatic/period` for igual a MENSAL ou ANUAL.
     ConsentRejectionReason:
       type: object
       description: |
@@ -1869,8 +1981,6 @@ components:
             - TITULARIDADE_INCONSISTENTE: Conta atualmente não associada ao CPF/CNPJ do consentimento de longa duração
     ConsentRevocation:
       type: object
-      required:
-        - status
       properties:
         status:
           type: string
@@ -1913,6 +2023,56 @@ components:
               $ref: '#/components/schemas/ConsentRevokedReason'
         riskSignals:
           $ref: '#/components/schemas/RiskSignalsConsents'
+        creditors:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            description: Objeto contendo os dados do recebedor (creditor).
+            properties:
+              name:
+                type: string
+                pattern: ^([A-Za-zÀ-ÖØ-öø-ÿ,.@:&*+_<>()!?/\\$%\d' -]+)$
+                maxLength: 120
+                example: Marco Antonio de Brito
+                description: |
+                  Em caso de pessoa natural deve ser informado o nome completo do titular da conta do recebedor.  
+                  Em caso de pessoa jurídica deve ser informada a razão social ou o nome fantasia da conta do recebedor.
+        startDateTime:
+          description: Data e hora em que o consentimento deve passar a ser válido. Uma string com data e hora conforme especificação [RFC-3339](https://datatracker.ietf.org/doc/html/rfc3339), sempre com a utilização de timezone UTC(UTC time format).
+          type: string
+          format: date-time
+          example: '2021-05-21T08:30:00Z'
+          pattern: '^(\d{4})-(1[0-2]|0?[1-9])-(3[01]|[12][0-9]|0?[1-9])T(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)Z$'
+          maxLength: 20
+        expirationDateTime:
+          description: Data e hora em que o consentimento deve deixar de ser válido. Uma string com data e hora conforme especificação [RFC-3339](https://datatracker.ietf.org/doc/html/rfc3339), sempre com a utilização de timezone UTC(UTC time format).
+          type: string
+          format: date-time
+          example: '2021-05-21T08:30:00Z'
+          pattern: '^(\d{4})-(1[0-2]|0?[1-9])-(3[01]|[12][0-9]|0?[1-9])T(?:[01]\d|2[0123]):(?:[012345]\d):(?:[012345]\d)Z$'
+          maxLength: 20
+        automatic:
+          type: object
+          description: Definição da configuração de recorrência para pagamentos automáticos
+          properties:
+            transactionLimit:
+              type: string
+              pattern: '^((\d{1,16}\.\d{2}))$'
+              minLength: 4
+              maxLength: 19
+              example: '1000000.12'
+              description: Valor da transação com 2 casas decimais.
+            dayOfMonth:
+              type: integer
+              format: int32
+              minimum: 1
+              maximum: 31
+              example: 10
+              description: |
+                Dia fixo do mês que está prevista a transação.
+
+                [Restrição] Campo deve ser enviado quando o campo `/data/recurringConfiguration/automatic/period` for igual a MENSAL ou ANUAL.
     ConsentRevokedReason:
       type: object
       description: |
@@ -1951,6 +2111,8 @@ components:
         - $ref: '#/components/schemas/Vrp'
     Automatic:
       type: object
+      required:
+        - automatic
       properties:
         automatic:
           type: object
@@ -2136,50 +2298,29 @@ components:
             Deve ser preenchido sempre que o usuário pagador inserir alguma informação adicional em um pagamento, a ser enviada ao recebedor.
         creditorAccount:
           $ref: '#/components/schemas/PostCreditorAccount'
-    PostSweeping:
-      type: object
-      properties:
-        sweeping:
-          type: object
-          description: Definição da configuração de recorrência para transferências automáticas de fundos.
-          properties:
-            amount:
-              type: string
-              minLength: 4
-              maxLength: 19
-              pattern: '^((\d{1,16}\.\d{2}))$'
-              example: '100000.12'
-              description: Valor da transação com 2 casas decimais.
-            transactionLimit:
-              type: string
-              pattern: '^((\d{1,16}\.\d{2}))$'
-              minLength: 4
-              maxLength: 19
-              example: '1000000.12'
-              description: Valor da transação com 2 casas decimais.
-            periodicLimits:
-              $ref: "#/components/schemas/PeriodicLimits"
     Sweeping:
       type: object
+      required:
+        - sweeping
       properties:
         sweeping:
           type: object
           description: Definição da configuração de recorrência para transferências automáticas de fundos.
           properties:
-            amount:
+            totalAllowedAmount:
               type: string
               minLength: 4
               maxLength: 19
               pattern: '^((\d{1,16}\.\d{2}))$'
               example: '100000.12'
-              description: Valor da transação com 2 casas decimais.
+              description: Valor máximo a ser atingido pelo somatório de todas as transações que utilizam o consentimento autorizado pelo cliente. Caso o valor seja superado, a detentora de conta deve negar a transação solicitada pela iniciadora.
             transactionLimit:
               type: string
               pattern: '^((\d{1,16}\.\d{2}))$'
               minLength: 4
               maxLength: 19
               example: '1000000.12'
-              description: Valor da transação com 2 casas decimais.
+              description: Valor máximo para cada transação de pagamento associada a esse consentimento. Caso valor do pagamento seja maior que esse limite, a detentora de contas deve rejeitar a transação de pagamento.
             periodicLimits:
               $ref: "#/components/schemas/PeriodicLimits"
     PeriodicLimits:
@@ -2196,6 +2337,8 @@ components:
           $ref: '#/components/schemas/Year'
     Vrp:
       type: object
+      required:
+        - vrp
       properties:
         vrp:
           type: object
@@ -2563,12 +2706,10 @@ components:
             - recurringConsentId
             - statusUpdateDateTime
             - loggedUser
-            - businessEntity
             - status
             - creditors
             - startDateTime
             - creationDateTime
-            - expirationDateTime
             - recurringConfiguration
           properties:
             recurringConsentId:
@@ -2694,18 +2835,6 @@ components:
                       example: O usuário rejeitou a autorização do consentimento 
             recurringConfiguration:
               $ref: '#/components/schemas/RecurringConfiguration'
-            ibgeTownCode:
-              type: string
-              minLength: 7
-              maxLength: 7
-              pattern: '^\d{7}$'
-              example: '5300108'
-              description: |
-                Campo utilizado pela iniciadora para cálculo do dia útil de liquidação do pagamento (vide especificação do endToEndId) baseado no munícipio de cadastro do usuário pagador no detentor.
-                
-                [Restrições]
-                - Campo obrigatório que deverá ser retornado quando o consentimento estiver ou passar pelo status AUTHORISED;
-                - Campo obrigatório quando o oneOf utilizado do recurringConfiguration for “automatic”.
         links:
           $ref: '#/components/schemas/LinkSingle'
         meta:
@@ -2724,12 +2853,10 @@ components:
             - recurringConsentId
             - statusUpdateDateTime
             - loggedUser
-            - businessEntity
             - status
             - creditors
             - startDateTime
             - creationDateTime
-            - expirationDateTime
             - recurringConfiguration
           properties:
             recurringConsentId:
@@ -2855,18 +2982,6 @@ components:
                       example: O usuário rejeitou a autorização do consentimento 
             recurringConfiguration:
               $ref: '#/components/schemas/RecurringConfiguration'
-            ibgeTownCode:
-              type: string
-              minLength: 7
-              maxLength: 7
-              pattern: '^\d{7}$'
-              example: '5300108'
-              description: |
-                Campo utilizado pela iniciadora para cálculo do dia útil de liquidação do pagamento (vide especificação do endToEndId) baseado no munícipio de cadastro do usuário pagador no detentor.
-                
-                [Restrições]
-                - Campo obrigatório que deverá ser retornado quando o consentimento estiver ou passar pelo status AUTHORISED;
-                - Campo obrigatório quando o oneOf utilizado do recurringConfiguration for “automatic”.
             riskSignals:
               $ref: '#/components/schemas/RiskSignalsConsents'
         links:
@@ -2928,13 +3043,13 @@ components:
         type: object
         required:
           - recurringPaymentId
-          - recurringConsentId
           - endToEndId
           - date
           - creationDateTime
           - statusUpdateDateTime  
           - status
           - payment
+          - document
         properties:
           recurringPaymentId:
             type: string
@@ -2960,6 +3075,8 @@ components:
               - o identificador associado ao namespace da instituição transmissora (bancoex)
               - o identificador específico dentro do namespace (C1DD33123).
               Informações mais detalhadas sobre a construção de namespaces devem ser consultadas na [RFC8141](https://tools.ietf.org/html/rfc8141).
+
+              [Restrição] Este campo é de preenchimento obrigatório quando o valor do campo authorisationFlow for igual a FIDO_FLOW.
           endToEndId:
             $ref: '#/components/schemas/EndToEndId'
           date:
@@ -3010,11 +3127,31 @@ components:
               Trata-se de um identificador de transação que deve ser retransmitido intacto pelo PSP do pagador ao gerar a ordem de pagamento. 
               Essa informação permitirá ao recebedor identificar e correlacionar a transferência, quando recebida, com a apresentação das instruções ao pagador. 
               Os caracteres permitidos no contexto do Pix para o campo txid (EMV 62-05) são:Letras minúsculas, de 'a' a 'z' Letras maiúsculas, de 'A' a 'z' Dígitos decimais, de '0' a '9'.
+          document:
+            type: object
+            description: Informações do documento identificador.
+            required:
+              - identification
+              - rel
+            properties:
+              identification:
+                type: string
+                pattern: ^(?:\d{11}|\d{14})$
+                minLength: 11
+                maxLength: 14
+                example: '11111111111111'
+                description: Número do documento de identificação oficial do titular pessoa natural ou jurídica.
+              rel:
+                type: string
+                enum:
+                  - CPF
+                  - CNPJ
+                example: 'CNPJ'
+                description: Tipo do documento de identificação oficial do titular pessoa natural ou jurídica.
     ResponseRecurringPaymentsPostData:
       type: object
       required:
         - recurringPaymentId
-        - recurringConsentId
         - endToEndId
         - date
         - creationDateTime
@@ -3024,6 +3161,7 @@ components:
         - cnpjInitiator
         - payment
         - localInstrument
+        - document
       properties:
         recurringPaymentId:
           type: string
@@ -3049,6 +3187,8 @@ components:
             - o identificador associado ao namespace da instituição transmissora (bancoex)
             - o identificador específico dentro do namespace (C1DD33123).
             Informações mais detalhadas sobre a construção de namespaces devem ser consultadas na [RFC8141](https://tools.ietf.org/html/rfc8141).
+
+            [Restrição] Este campo é de preenchimento obrigatório quando o valor do campo authorisationFlow for igual a FIDO_FLOW.
         endToEndId:
           $ref: '#/components/schemas/EndToEndId'
         date:
@@ -3157,11 +3297,31 @@ components:
             Trata-se de um identificador de transação que deve ser retransmitido intacto pelo PSP do pagador ao gerar a ordem de pagamento. 
             Essa informação permitirá ao recebedor identificar e correlacionar a transferência, quando recebida, com a apresentação das instruções ao pagador. 
             Os caracteres permitidos no contexto do Pix para o campo txid (EMV 62-05) são:Letras minúsculas, de 'a' a 'z' Letras maiúsculas, de 'A' a 'z' Dígitos decimais, de '0' a '9'.
+        document:
+          type: object
+          description: Informações do documento identificador.
+          required:
+            - identification
+            - rel
+          properties:
+            identification:
+              type: string
+              pattern: ^(?:\d{11}|\d{14})$
+              minLength: 11
+              maxLength: 14
+              example: '11111111111111'
+              description: Número do documento de identificação oficial do titular pessoa natural ou jurídica.
+            rel:
+              type: string
+              enum:
+                - CPF
+                - CNPJ
+              example: 'CNPJ'
+              description: Tipo do documento de identificação oficial do titular pessoa natural ou jurídica.
     ResponseRecurringPaymentsData:
       type: object
       required:
         - recurringPaymentId
-        - recurringConsentId
         - endToEndId
         - date
         - creationDateTime
@@ -3170,6 +3330,7 @@ components:
         - status
         - cnpjInitiator
         - payment
+        - document
       properties:
         recurringPaymentId:
           type: string
@@ -3195,6 +3356,8 @@ components:
             - o identificador associado ao namespace da instituição transmissora (bancoex)
             - o identificador específico dentro do namespace (C1DD33123).
             Informações mais detalhadas sobre a construção de namespaces devem ser consultadas na [RFC8141](https://tools.ietf.org/html/rfc8141).
+
+            [Restrição] Este campo é de preenchimento obrigatório quando o valor do campo authorisationFlow for igual a FIDO_FLOW.
         endToEndId:
           $ref: '#/components/schemas/EndToEndId'
         date:
@@ -3278,6 +3441,27 @@ components:
             Trata-se de um identificador de transação que deve ser retransmitido intacto pelo PSP do pagador ao gerar a ordem de pagamento. 
             Essa informação permitirá ao recebedor identificar e correlacionar a transferência, quando recebida, com a apresentação das instruções ao pagador. 
             Os caracteres permitidos no contexto do Pix para o campo txid (EMV 62-05) são:Letras minúsculas, de 'a' a 'z' Letras maiúsculas, de 'A' a 'z' Dígitos decimais, de '0' a '9'.
+        document:
+          type: object
+          description: Informações do documento identificador.
+          required:
+            - identification
+            - rel
+          properties:
+            identification:
+              type: string
+              pattern: ^(?:\d{11}|\d{14})$
+              minLength: 11
+              maxLength: 14
+              example: '11111111111111'
+              description: Número do documento de identificação oficial do titular pessoa natural ou jurídica.
+            rel:
+              type: string
+              enum:
+                - CPF
+                - CNPJ
+              example: 'CNPJ'
+              description: Tipo do documento de identificação oficial do titular pessoa natural ou jurídica.  
     XFapiInteractionId:
       type: string
       pattern: '^[a-zA-Z0-9][a-zA-Z0-9\-]{0,99}$'
@@ -3395,7 +3579,7 @@ components:
     xFapiInteractionId:
       name: x-fapi-interaction-id
       in: header
-      description: 'Um UID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.'
+      description: Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
       required: true
       schema:
         type: string
@@ -3405,7 +3589,7 @@ components:
     xFapiInteractionIdUUID:
       name: x-fapi-interaction-id
       in: header
-      description: 'Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.'
+      description:   Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
       required: true
       schema:
         type: string
@@ -3432,7 +3616,7 @@ components:
         clientCredentials:
           tokenUrl: 'https://authserver.example/token'
           scopes:
-            recurringPayments: Escopo necessário para acesso à API Automatic Payments.
+            recurring-payments: Escopo necessário para acesso à API Automatic Payments.
     OAuth2AuthorizationCode:
       type: oauth2
       description: Fluxo OAuth necessário para que a iniciadora possa iniciar pagamentos. Requer o processo de redirecionamento e autenticação do usuário.
@@ -3441,9 +3625,9 @@ components:
           authorizationUrl: 'https://authserver.example/token'
           tokenUrl: 'https://authserver.example/token'
           scopes:
-            recurringPayments: Escopo necessário para acesso à API Automatic Payments.
+            recurring-payments: Escopo necessário para acesso à API Automatic Payments.
             openid: Indica que a autorização está sendo realizada utilizando o protocolo definido pela openid.
-            'recurringConsent:recurringConsentId': Escopo contendo o identificador único do consentimento criado para a iniciação de pagamento solicitada
+            'recurring-consent:recurringConsentId': Escopo contendo o identificador único do consentimento criado para a iniciação de pagamento solicitada
     NonRedirectAuthorizationCode:
       type: oauth2
       flows: 
@@ -3451,7 +3635,7 @@ components:
           authorizationUrl: 'https://authserver.example/token'
           tokenUrl: 'https://authserver.example/token'
           scopes:
-            recurringPayments: Escopo necessário para acesso à API Automatic Payments.
+            recurring-payments: Escopo necessário para acesso à API Automatic Payments.
             openid: Indica que a autorização está sendo realizada utilizando o protocolo definido pela openid.
             'enrollment:enrollmentId': Permite realizar atualização de um registro com a permissão do cliente.
             nrp-consents: Consentimento para pagamentos sem redirecionamento.
@@ -3465,7 +3649,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     BadRequestPaymentsConsents:
@@ -3477,7 +3661,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     Forbidden:
@@ -3489,7 +3673,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     InternalServerError:
@@ -3501,7 +3685,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     GatewayTimeoutWithAdditionalProperties:
@@ -3513,7 +3697,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     MethodNotAllowed:
@@ -3525,7 +3709,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     NotAcceptable:
@@ -3537,7 +3721,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     NotFound:
@@ -3549,7 +3733,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     SiteIsOverloaded:
@@ -3577,7 +3761,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     UnprocessableEntityRecurringPaymentsPaymentId:
@@ -3599,7 +3783,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     UnprocessableEntityRecurringConsents:
@@ -3611,7 +3795,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     UnprocessableConsents:
@@ -3623,7 +3807,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     Unauthorized:
@@ -3635,7 +3819,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     RecurringConsentsConsentId:
@@ -3643,7 +3827,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
       content:
@@ -3655,7 +3839,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
       content:
@@ -3667,7 +3851,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
       content:
@@ -3679,7 +3863,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
       content:
@@ -3691,7 +3875,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+             Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora. Caso não recebido ou recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retornar na resposta de erro. O iniciador deve acatar o valor recebido do detentor.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
       content:
