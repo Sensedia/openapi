@@ -5,7 +5,7 @@ info:
     Família de API para permitir o pagamento sem redirecionamento via Open Finance Brasil.  
     Permite tanto o gerenciamento dos dispositivos vinculados as contas quanto a autorização de consentimentos criados via fluxo sem redirecionamento.
     
-  version: 1.2.0
+  version: 1.4.0
   license:
     name: Apache 2.0
     url: 'https://www.apache.org/licenses/LICENSE-2.0'
@@ -65,8 +65,6 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/UnprocessableEntityEnrollment'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '529':
@@ -109,8 +107,6 @@ paths:
           $ref: '#/components/responses/MethodNotAllowed'
         '406':
           $ref: '#/components/responses/NotAcceptable'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '529':
@@ -234,8 +230,6 @@ paths:
           $ref: '#/components/responses/NotAcceptable'
         '422':
           $ref: '#/components/responses/UnprocessableEntityEnrollmentCancel'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '529':
@@ -292,8 +286,6 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/UnprocessableEntityEnrollmentFidoRegistrationOptions'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '529':
@@ -353,8 +345,6 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/UnprocessableEntityEnrollmentFidoRegistration'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '529':
@@ -408,7 +398,7 @@ paths:
                   properties:
                     rp:
                       type: string
-                      description: Identificador único da Relying Party.
+                      description: Identificador único da Relying Party, que corresponde ao valor do CN do certificado de transporte da iniciadora.
                     platform:
                       type: string
                       description: |
@@ -440,8 +430,6 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/UnprocessableEntityEnrollmentFidoSignOptions'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '529':
@@ -497,8 +485,6 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/UnprocessableEntityEnrollmentRiskSignals'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '529':
@@ -520,8 +506,9 @@ paths:
       operationId: authorizeConsent
       description: |
         Autorização de um consentimento de pagamentos em status `AWAITING_AUTHORISATION` a partir do access_token emitido pela jornada sem redirecionamento e envio de sinais de risco.  
-        O consentimento de pagamento deve transitar ao status `AUTHORISED` na execução com sucesso desse método.  
-        Em caso de falha, o status do consentimento do pagamento precisa transitar para o status `REJECTED`.
+        Caso o consentimento possua múltiplos aprovadores, deve ser movido para `PARTIALLY_ACCEPTED` após a primeira aprovação, até que todas as aprovações necessárias sejam coletadas e ele transite para `AUTHORISED`.  
+        Caso de aprovação única, o consentimento deve transitar, pós autorização, direto para `AUTHORISED`.
+        Em caso de falha em algum dos cenários, o status do consentimento do pagamento precisa transitar para o status `REJECTED`.
       parameters:
         - $ref: '#/components/parameters/consentId'
         - $ref: '#/components/parameters/Authorization'
@@ -556,8 +543,6 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/UnprocessableEntityConsentsAuthorization'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
         '529':
@@ -578,7 +563,7 @@ components:
   headers:
     xFapiInteractionId:
       description: |
-        A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+        Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
       schema:
         $ref: '#/components/schemas/XFapiInteractionId'
   schemas:
@@ -1077,36 +1062,73 @@ components:
           properties:
             deviceId:
               type: string
-              description: ID único do dispositivo gerado pela plataforma.
+              description: |
+                ID único do dispositivo gerado pela plataforma.
+
+                Utiliza-se a propriedade do sistema que identifica a combinação de usuário logado, chave de assinatura do aplicativo e dispositivo.
+
+                [Android] Informação obtida através do [link](https://developer.android.com/reference/android/provider/Settings.Secure#ANDROID_ID).
+
+                [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/uikit/uidevice/1620059-identifierforvendor/).
+              example: 00aa11bb22cc33dd
             isRootedDevice:
               type: boolean
               description: Indica se o dispositivo atualmente está com permissão de “root”.
+              example: false
             screenBrightness:
               type: number
               format: double
               description: |
-               Indica o nível de brilho da tela do dispositivo.  
-               Em dispositivos Android o valor é um inteiro, entre 0 e 255, inclusive;  
-               Em dispositivos iOS o valor é um ponto flutuante entre 0.0 e 1.0.
+               Indica o nível de brilho da tela do dispositivo.
+
+               [Android] O valor é inteiro, tipicamente entre 0 a 255, podendo a faixa de valores variar de acordo com o fabricante do celular. Referência no [link](https://developer.android.com/reference/android/provider/Settings.System#SCREEN_BRIGHTNESS).
+
+               [iOS] O valor é ponto flutuante entre “0.0” e “1.0”. Referência no [link](https://developer.apple.com/documentation/uikit/uiscreen/).
+              example: 255
             elapsedTimeSinceBoot:
               type: integer
               format: int64
-              description: Indica por quanto tempo (em milissegundos) o dispositivo está ligado.
+              description: |
+                Indica por quanto tempo (em milissegundos) o dispositivo está ligado.
+
+                [Android] Informação obtida através do [link](https://developer.android.com/reference/android/os/SystemClock#elapsedRealtime%28%29).
+
+                [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/kernel/kern/).
+              example: 6356027
             osVersion:
               type: string
-              description: Versão do sistema operacional.
+              description: |
+                Versão do sistema operacional.
+
+                [Android] Informação obtida através do [link](https://developer.android.com/reference/android/os/Build.VERSION#RELEASE).
+                [iOS] - Informação obtida através do [link](https://developer.apple.com/documentation/uikit/uidevice/1620043-systemversion/).
+              example: "14"
             userTimeZoneOffset:
               type: string
               description: |
-                Indica a configuração de fuso horário do dispositivo do usuário, com o formato UTC offset: ±hh[:mm]
+                Indica a configuração de fuso horário do dispositivo do usuário, com o formato UTC offset: ±hh[:mm]. O formato especificado permite a omissão da parte correspondente aos minutos, caso esta última tenha valor zero. Assim, ambos os valores '-03:00' e '-03' são válidos e representam o mesmo fuso horário.
+
+                [Android] Informação obtida através do [link](https://developer.android.com/reference/java/time/ZonedDateTime#getOffset()) ou, para versões anteriores à 8.0, [link](https://developer.android.com/reference/java/util/TimeZone#getOffset(long)).
+
+                [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/foundation/timezone/).
               example: '-03'
             language:
               type: string
-              description: Indica o idioma do dispositivo no formato ISO 639-1.
+              description: |
+                Indica o idioma do dispositivo no formato ISO 639-1.
+
+                [Android] Informação obtida através do [link](https://developer.android.com/reference/java/util/Locale#getLanguage()).
+                [iOS] - Informação obtida através do [link](https://developer.apple.com/documentation/foundation/locale/languagecode/).
               example: 'pt'
             screenDimensions:
               type: object
-              description: Dimensões da tela do dispositivo
+              description: |
+                	
+                Dimensões que o aplicativo ocupa na tela do dispositivo.
+
+                [Android] Informação obtida através do [link](https://developer.android.com/reference/android/view/WindowMetrics#getBounds()), ou, para versões anteriores à 11, [link](https://developer.android.com/reference/android/util/DisplayMetrics).
+
+                [iOS] - Informação obtida através do [link](https://developer.apple.com/documentation/metal/mtlrasterizationratemap/3088873-screensize/).
               required:
                 - height
                 - width
@@ -1114,68 +1136,109 @@ components:
                 height:
                   type: integer
                   description: Altura da tela, em pixels.
+                  example: 2340
                 width:
                   type: integer
                   description: Largura da tela, em pixels.
+                  example: 1080
             accountTenure:
               type: string
               format: date
               pattern: '^(\d{4})-(1[0-2]|0?[1-9])-(3[01]|[12][0-9]|0?[1-9])$'
               description: Data de cadastro do cliente na iniciadora.
-              example: 2023-09-01
+              example: "2023-08-20"
             geolocation:
               type: object
+              description: |
+                Localização do usuário, obtida com seu consentimento.
+
+                [Android] Informação obtida através do [link](https://developers.google.com/android/reference/com/google/android/gms/location/FusedLocationProviderClient#public-abstract-tasklocation-getlastlocation) considerando as permissões necessárias.
+
+                [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/corelocation/).
+
+                [Restrição] A ITP deve solicitar ao usuário a permissão para compartilhamento de sua localização. Este campo poderá ser omitido caso o GPS esteja indisponível, isto é, sem sinal, ou em dispositivos sem o hardware necessário; ou caso o usuário negue o consentimento.
               properties:
                 latitude:
                   type: number
+                  example: -15.738602
                 longitude:
                   type: number
+                  example: -47.926498
                 type:
                   type: string
                   enum:
                     - COARSE
                     - FINE
                     - INFERRED
-            isCallInProgress:
+                  example: FINE
+            isCallingProgress:
               type: boolean
               description: |
                 Indica chamada ativa no momento do vínculo.
 
+                [Android] Informação obtida através do [link](https://developer.android.com/reference/android/media/AudioManager#getMode()).
+
+                [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/callkit/).
+
                 [Restrição] Caso o sinal de risco esteja disponível (cliente permitiu que fosse coletado), o mesmo deverá ser enviado
+              example: false
             isDevModeEnabled:
               type: boolean
               description: Indica se o dispositivo está em modo de desenvolvedor.
+              example: false
             isMockGPS:
               type: boolean
-              description: Indica se o dispositivo está usando um GPS falso.
+              description: |
+                Indica se o dispositivo está usando um GPS falso. Deve ser enviado sempre que exista o campo geolocation com tipo `COARSE` ou `FINE`.
+
+                [Android] Informação obtida através do [link](https://developer.android.com/reference/android/location/Location.html#isMock()) ou, para versões anteriores à 12, [link](https://developer.android.com/reference/android/location/Location.html#isFromMockProvider()).
+
+                [iOS] Informação obtida através dos links:
+                sourceInformation, [link](https://developer.apple.com/documentation/corelocation/cllocation/3861803-sourceinformation).
+                isSimulatedBySoftware, [link](https://developer.apple.com/documentation/corelocation/cllocationsourceinformation/3861807-issimulatedbysoftware).
+              example: false
             isEmulated:
               type: boolean
               description: Indica se o dispositivo é emulado ou real.
+              example: false
             isMonkeyRunner:
               type: boolean
               description: Indica o uso do MonkeyRunner.
+              example: false
             isCharging:
               type: boolean
-              description: Indica se a bateria do dispositivo está sendo carregada.
+              description: |
+                Indica se a bateria do dispositivo está sendo carregada.
+
+                [Android] Informação obtida através do [link](https://developer.android.com/reference/android/os/BatteryManager).
+
+                [iOS] Informações obtida através do [link](https://developer.apple.com/documentation/uikit/uidevice/1620045-batterymonitoringenabled/).
+              example: false
             antennaInformation:
               type: string
               description: Indica em qual antena o dispositivo está conectado.
+              example: "CellIdentityLte:{ mCi=2******60 mPci=274 mTac=5***1 mEarfcn=9510 mBands=[28] mBandwidth=2147483647 mMcc=724 mMnc=10 mAlphaLong=VIVO mAlphaShort=VIVO mAdditionalPlmns={} mCsgInfo=null}, CellIdentityLte:{ mCi=1*****01 mPci=361 mTac=3***6 mEarfcn=9410 mBands=[28] mBandwidth=2147483647 mMcc=724 mMnc=03 mAlphaLong=TIMBRASIL mAlphaShort=TIMBRASIL mAdditionalPlmns={} mCsgInfo=null}"
             isUsbConnected:
               type: boolean
               description: Indica se o dispositivo está conectado a outro dispositivo via USB.
+              example: false
             integrity:
               type: object
               description: |
-                Informa a integridade do dispositivo e app.  
-                No Android, conforme documentação [Play API Integrity](https://developer.android.com/google/play/integrity/overview?hl=pt-br).  
-                No iOS, conforme documentação [App Attest](https://developer.apple.com/documentation/devicecheck/establishing_your_app_s_integrity).
+                Informa a integridade do dispositivo e app.
+
+                [Android] Conforme documentação Play API Integrity, [link](https://developer.android.com/google/play/integrity/overview?hl=pt-br).
+
+                [iOS] Conforme documentação App Attest, [link](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity).
               properties:
                 appRecognitionVerdict:
                   type: string
                   description: Informa a integridade do app
+                  example: "PLAY_RECOGNIZED"
                 deviceRecognitionVerdict:
                   type: string
                   description: Informa a integridade do dispositivo
+                  example: '[\"MEETS_DEVICE_INTEGRITY\"]'
     ConsentAuthorization:
       type: object
       required:
@@ -1209,7 +1272,14 @@ components:
               properties:
                 deviceId:
                   type: string
-                  description: ID único do dispositivo gerado pela plataforma.
+                  description: |
+                    ID único do dispositivo gerado pela plataforma.
+
+                    Utiliza-se a propriedade do sistema que identifica a combinação de usuário logado, chave de assinatura do aplicativo e dispositivo.
+
+                    [Android] Informação obtida através do [link](https://developer.android.com/reference/android/provider/Settings.Secure#ANDROID_ID).
+
+                    [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/uikit/uidevice/1620059-identifierforvendor/).
                 isRootedDevice:
                   type: boolean
                   description: Indica se o dispositivo atualmente está com permissão de “root”.
@@ -1217,28 +1287,52 @@ components:
                   type: number
                   format: double
                   description: |
-                   Indica o nível de brilho da tela do dispositivo.  
-                   Em dispositivos Android o valor é um inteiro, entre 0 e 255, inclusive;  
-                   Em dispositivos iOS o valor é um ponto flutuante entre 0.0 e 1.0.
+                    Indica o nível de brilho da tela do dispositivo.
+
+                    [Android] O valor é inteiro, tipicamente entre 0 a 255, podendo a faixa de valores variar de acordo com o fabricante do celular. Referência no [link](https://developer.android.com/reference/android/provider/Settings.System#SCREEN_BRIGHTNESS).
+
+                    [iOS] O valor é ponto flutuante entre “0.0” e “1.0”. Referência no [link](https://developer.apple.com/documentation/uikit/uiscreen/).
                 elapsedTimeSinceBoot:
                   type: integer
                   format: int64
-                  description: Indica por quanto tempo (em milissegundos) o dispositivo está ligado.
+                  description: |
+                    Indica por quanto tempo (em milissegundos) o dispositivo está ligado.
+
+                    [Android] Informação obtida através do [link](https://developer.android.com/reference/android/os/SystemClock#elapsedRealtime%28%29).
+
+                    [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/kernel/kern/).
                 osVersion:
                   type: string
-                  description: Versão do sistema operacional.
+                  description: |
+                    Versão do sistema operacional.
+
+                    [Android] Informação obtida através do [link](https://developer.android.com/reference/android/os/Build.VERSION#RELEASE).
+                    [iOS] - Informação obtida através do [link](https://developer.apple.com/documentation/uikit/uidevice/1620043-systemversion/).
                 userTimeZoneOffset:
                   type: string
                   description: |
-                    Indica a configuração de fuso horário do dispositivo do usuário, com o formato UTC offset: ±hh[:mm]
+                    Indica a configuração de fuso horário do dispositivo do usuário, com o formato UTC offset: ±hh[:mm]. O formato especificado permite a omissão da parte correspondente aos minutos, caso esta última tenha valor zero. Assim, ambos os valores '-03:00' e '-03' são válidos e representam o mesmo fuso horário.
+
+                    [Android] Informação obtida através do [link](https://developer.android.com/reference/java/time/ZonedDateTime#getOffset()) ou, para versões anteriores à 8.0, [link](https://developer.android.com/reference/java/util/TimeZone#getOffset(long)).
+
+                    [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/foundation/timezone/).
                   example: '-03'
                 language:
                   type: string
-                  description: Indica o idioma do dispositivo no formato ISO 639-1.
+                  description: |
+                    Indica o idioma do dispositivo no formato ISO 639-1.
+
+                    [Android] Informação obtida através do [link](https://developer.android.com/reference/java/util/Locale#getLanguage()).
+                    [iOS] - Informação obtida através do [link](https://developer.apple.com/documentation/foundation/locale/languagecode/).
                   example: 'pt'
                 screenDimensions:
                   type: object
-                  description: Dimensões da tela do dispositivo
+                  description: |
+                    Dimensões que o aplicativo ocupa na tela do dispositivo.
+
+                    [Android] Informação obtida através do [link](https://developer.android.com/reference/android/view/WindowMetrics#getBounds()), ou, para versões anteriores à 11, [link](https://developer.android.com/reference/android/util/DisplayMetrics).
+
+                    [iOS] - Informação obtida através do [link](https://developer.apple.com/documentation/metal/mtlrasterizationratemap/3088873-screensize/).
                   required:
                     - height
                     - width
@@ -1257,6 +1351,14 @@ components:
                   example: 2023-09-01
                 geolocation:
                   type: object
+                  description: |
+                    Localização do usuário, obtida com seu consentimento.
+
+                    [Android] Informação obtida através do [link](https://developers.google.com/android/reference/com/google/android/gms/location/FusedLocationProviderClient#public-abstract-tasklocation-getlastlocation) considerando as permissões necessárias.
+
+                    [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/corelocation/).
+
+                    [Restrição] A ITP deve solicitar ao usuário a permissão para compartilhamento de sua localização. Este campo poderá ser omitido caso o GPS esteja indisponível, isto é, sem sinal, ou em dispositivos sem o hardware necessário; ou caso o usuário negue o consentimento.
                   properties:
                     latitude:
                       type: number
@@ -1268,18 +1370,29 @@ components:
                         - COARSE
                         - FINE
                         - INFERRED
-                isCallInProgress:
+                isCallingProgress:
                   type: boolean
                   description: |
                     Indica chamada ativa no momento do vínculo.
-    
+
+                    [Android] Informação obtida através do [link](https://developer.android.com/reference/android/media/AudioManager#getMode()).
+
+                    [iOS] Informação obtida através do [link](https://developer.apple.com/documentation/callkit/).
+
                     [Restrição] Caso o sinal de risco esteja disponível (cliente permitiu que fosse coletado), o mesmo deverá ser enviado
                 isDevModeEnabled:
                   type: boolean
                   description: Indica se o dispositivo está em modo de desenvolvedor.
                 isMockGPS:
                   type: boolean
-                  description: Indica se o dispositivo está usando um GPS falso.
+                  description: |
+                    Indica se o dispositivo está usando um GPS falso. Deve ser enviado sempre que exista o campo geolocation com tipo `COARSE` ou `FINE`.
+
+                    [Android] Informação obtida através do [link](https://developer.android.com/reference/android/location/Location.html#isMock()) ou, para versões anteriores à 12, [link](https://developer.android.com/reference/android/location/Location.html#isFromMockProvider()).
+
+                    [iOS] Informação obtida através dos links:
+                    sourceInformation, [link](https://developer.apple.com/documentation/corelocation/cllocation/3861803-sourceinformation).
+                    isSimulatedBySoftware, [link](https://developer.apple.com/documentation/corelocation/cllocationsourceinformation/3861807-issimulatedbysoftware).
                 isEmulated:
                   type: boolean
                   description: Indica se o dispositivo é emulado ou real.
@@ -1288,7 +1401,12 @@ components:
                   description: Indica o uso do MonkeyRunner.
                 isCharging:
                   type: boolean
-                  description: Indica se a bateria do dispositivo está sendo carregada.
+                  description: |
+                    Indica se a bateria do dispositivo está sendo carregada.
+
+                    [Android] Informação obtida através do [link](https://developer.android.com/reference/android/os/BatteryManager).
+
+                    [iOS] Informações obtida através do [link](https://developer.apple.com/documentation/uikit/uidevice/1620045-batterymonitoringenabled/).
                 antennaInformation:
                   type: string
                   description: Indica em qual antena o dispositivo está conectado.
@@ -1298,9 +1416,11 @@ components:
                 integrity:
                   type: object
                   description: |
-                    Informa a integridade do dispositivo e app.  
-                    No Android, conforme documentação [Play API Integrity](https://developer.android.com/google/play/integrity/overview?hl=pt-br).  
-                    No iOS, conforme documentação [App Attest](https://developer.apple.com/documentation/devicecheck/establishing_your_app_s_integrity).
+                    Informa a integridade do dispositivo e app.
+
+                    [Android] Conforme documentação Play API Integrity, [link](https://developer.android.com/google/play/integrity/overview?hl=pt-br).
+
+                    [iOS] Conforme documentação App Attest, [link](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity).
                   properties:
                     appRecognitionVerdict:
                       type: string
@@ -1319,10 +1439,10 @@ components:
               properties:
                 id:
                   type: string
-                  description: Identificador da credencial.
+                  description: Identificador da credencial. Deve ser o valor em formato base64url do campo rawId da chave pública utilizada no processo de autenticação.
                 rawId:
                   type: string
-                  description: Identificador da credencial. Pode ser igual ao campo id.
+                  description: Identificador da credencial. Para envio à detentora de conta, o valor deste atributo deve ser idêntico ao valor do atributo id.
                 type:
                   type: string
                   description: Tipo da credencial.
@@ -1338,29 +1458,23 @@ components:
                     clientDataJSON:
                       type: string
                       format: bytes
-                      description: Agrega as informações do aplicativo que gerou a credencial.
+                      description: Agrega as informações do aplicativo que gerou a credencial. Deve ser enviado no formato base64url para a detentora de conta.
                     authenticatorData:
                       type: string
                       format: bytes
-                      description: Representa a estrutura de dados do autenticador.
+                      description: Representa a estrutura de dados do autenticador. Deve ser enviado no formato base64url para a detentora de conta.
                     signature:
                       type: string
                       format: bytes
-                      description: Sequencia de bytes contendo a assinatura.
+                      description: Sequência de bytes contendo a assinatura. Deve ser enviado no formato base64url para a detentora de conta.
                     userHandle:
                       type: string
                       format: bytes
-                      description: Nome de usuário que foi enviado durante a criação da credencial.
+                      description: Nome de usuário que foi enviado durante a criação da credencial. Deve ser enviado no formato base64url para a detentora de conta.
                 clientExtensionResults:
                   type: object
-                  description: Estrutura para extensão de resultados 
-                  properties:
-                    additionalProp1:
-                      type: string
-                      description: Propriedade adicional.
-                    additionalProp2:
-                      type: string
-                      description: Propriedade adicional.
+                  description: Estrutura para extensão de resultados
+                  additionalProperties: true
     DebtorAccount:
       type: object
       description: |
@@ -1433,7 +1547,7 @@ components:
     EnrollmentRejectionReason:
       type: string
       enum:
-      - REJEITADO_TEMPO_EXPIRADO_AUTHORISATION
+      - REJEITADO_TEMPO_EXPIRADO_RISK_SIGNALS
       - REJEITADO_TEMPO_EXPIRADO_ACCOUNT_HOLDER_VALIDATION
       - REJEITADO_TEMPO_EXPIRADO_ENROLLMENT
       - REJEITADO_MAXIMO_CHALLENGES_ATINGIDO
@@ -1503,10 +1617,10 @@ components:
           properties:
             id:
               type: string
-              description: Identificador da credencial.
+              description: Identificador da credencial. Deve ser o valor em formato base64url do campo rawId da chave pública criada no processo de registro do dispositivo.
             rawId:
               type: string
-              description: Identificador da credencial. Pode ser igual ao campo id.
+              description: Identificador da credencial. Para envio ao detentor, o valor deste atributo deve ser idêntico ao valor do atributo id.
             response:
               type: object
               required:
@@ -1516,12 +1630,12 @@ components:
                 clientDataJSON:
                   type: string
                   format: bytes
-                  description: Agrega as informações do aplicativo que gerou a credencial.
+                  description: Agrega as informações do aplicativo que gerou a credencial. Deve ser enviado em formato base64url para o detentor.
                   example: eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiTVRBeU16azRhMkZxYUhOclpHcG9ZV3R6Iiwib3JpZ2luIjoiaHR0cHM6Ly93d3cudzMub3JnIiwiY3Jvc3NPcmlnaW4iOmZhbHNlfQ==
                 attestationObject:
                   type: string
                   format: bytes
-                  description: Agrega as informações da chave pública da credencial.
+                  description: Agrega as informações da chave pública da credencial. Deve ser enviado em formato base64url para o detentor.
                   example: o2NmbXRoZmlkby11MmZnYXR0U3RtdKJjc2lnWEcwRQIgZyUMtm43lCCqzoIbSDeoCUpJzh/VSchwQNxFR2UM/DsCIQDWpp4+/nklI7G2HPVZCIqw08R9omcn9kJrKPsuIO5k22N4NWOBWQFIMIIBRDCB6qADAgECAgkBcwb/////QwMwCgYIKoZIzj0EAwIwGzEZMBcGA1UEAxMQR251YmJ5IEhTTSBDQSAwMDAiGA8yMDEyMDYwMTAwMDAwMFoYDzIwNjIwNTMxMjM1OTU5WjAwMRkwFwYDVQQDExBHb29nbGUgR251YmJ5IHYwMRMwEQYDVQQtAwoAAXMG/////0MDMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELuWVatmVMfAOr53T6fh7X/iIgqKz5SCnKTBUnFo3FtbbslUGi8Qetr1nbyr6BVqGHqcJiXyvF6rVbj5fZqbiBTAKBggqhkjOPQQDAgNJADBGAiEA5GaaFxllkOr24b5s6Qu/4ch3ZgU+3GIAv/D8kj4EGMgCIQDXYfaVAMe7Jzht3ra4TaCKKpaUxp+nRkIO/SKiQZPjgmhhdXRoRGF0YVjEIYvQ2gJvAWdQFFLPcpStJJWLnFoQO0f5vT1T51P/rm5BAAAAAAAAAAAAAAAAAAAAAAAAAAAAQCJ8iR8CqPctr4tz/YAICs6bDwVqhDzdt3oohVVWRQruy+E1AFeEWgPMWsIS4UU0n+sRGW3m2K90z1d9ujtFPxylAQIDJiABIVggaUaH0XDx9F2UOrT0ao02wL+xjGR/BxnCB4WOU2w0H8YiWCATuK2PUWGPophwPsfNIC3CZw4TGlCMEq1R15cw1w5KDg==
             authenticatorAttachment:
               type: string
@@ -1534,8 +1648,7 @@ components:
             clientExtensionResults:
               type: object
               description: Extensões da credencial, específicas por plataforma
-              additionalProperties:
-                type: string
+              additionalProperties: true
     EnrollmentFidoOptionsInput:
       type: object
       required:
@@ -1551,7 +1664,7 @@ components:
           properties:
             rp:
               type: string
-              description: Identificador único da Relying Party.
+              description: Identificador único da Relying Party, que corresponde ao valor do CN do certificado de transporte da iniciadora.
             platform:
               type: string
               description: |
@@ -1566,7 +1679,6 @@ components:
       type: object
       required:
         - data
-        - links
         - meta
       properties:
         data:
@@ -1588,7 +1700,7 @@ components:
             challenge:
               type: string
               format: byte
-              description: Sequência de bytes aleatórios gerados pelo servidor FIDO2, codificados em base64.
+              description: Sequência de bytes aleatórios gerados pelo servidor FIDO2. Deve ser o valor em formato base64url sem padding.
             pubKeyCredParams:
               type: array
               items:
@@ -1615,17 +1727,13 @@ components:
             extensions:
               type: object
               description: Campo de extensão com opções que variam por plataforma.
-              additionalProperties:
-                type: string
-        links:
-          $ref: '#/components/schemas/LinkSingle'
+              additionalProperties: true
         meta:
           $ref: '#/components/schemas/Meta'
     EnrollmentFidoSignOptions:
       type: object
       required:
         - data
-        - links
         - meta
       properties:
         data:
@@ -1637,7 +1745,7 @@ components:
             challenge:
               type: string
               format: byte
-              description: Sequência de bytes aleatórios gerados pelo servidor FIDO2, codificados em base64.
+              description: Sequência de bytes aleatórios gerados pelo servidor FIDO2. Deve ser o valor em formato base64url sem padding.
             timeout:
               type: integer
               format: int32
@@ -1655,10 +1763,7 @@ components:
             extensions:
               type: object
               description: Campo de extensão com opções que variam por plataforma.
-              additionalProperties:
-                type: string
-        links:
-          $ref: '#/components/schemas/LinkSingle'
+              additionalProperties: true
         meta:
           $ref: '#/components/schemas/Meta'
     EnumAccountPaymentsType:
@@ -1745,10 +1850,10 @@ components:
       properties:
         id:
           type: string
-          description: Identificador único da Relying Party.
+          description: Identificador único da Relying Party. Esse campo deve ser preenchido com o valor que é enviado na requisição no campo /data/rp.
         name:
           type: string
-          description: Nome amigável da Relying Party para exibição aos usuários.
+          description: Nome amigável da Relying Party para exibição aos usuários. Pode ser obtido através do Software Statement Assertion, atributo software_client_name.
     FidoUser:
       type: object
       required:
@@ -1758,7 +1863,7 @@ components:
       properties:
         id:
           type: string
-          description: Identificador único do usuário sob registro.
+          description: Identificador único do usuário sob registro em formato base64. A conversão deste valor para o formato original (BufferSource ou ArrayBuffer) não deve ultrapassar 64 bytes.
         name:
           type: string
           description: Identificador do usuário human-readable.
@@ -1792,12 +1897,6 @@ components:
           type: string
           description: Identificador do tipo de credencial.
           example: public-key
-        transports:
-          type: array
-          description: Indicação opcional de como o cliente pode se comunicar com o autenticador do dispositivo.
-          items:
-            type: string
-            example: usb, nfc, ble, smart-card, hybrid, internal
     LoggedUser:
       type: object
       description: Usuário (pessoa natural) que encontra-se logado na iniciadora.
@@ -1842,11 +1941,10 @@ components:
       properties:
         self:
           type: string
-          format: uri
+          format: url
           maxLength: 2000
           description: URI completo que gerou a resposta atual.
           example: 'https://api.banco.com.br/open-banking/api/v1/resource'
-          pattern: '^(https:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{2,256}\.[a-z]{2,6}\b([-a-zA-Z0-9@:%_\+.~#?&\/\/=]*)$'
     ResponseError:
       type: object
       required:
@@ -2102,9 +2200,12 @@ components:
           $ref: '#/components/schemas/Meta'
     XFapiInteractionId:
       type: string
-      pattern: '^[a-zA-Z0-9][a-zA-Z0-9\-]{0,99}$'
-      maxLength: 100
-      description: 'Um UID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.'
+      format: uuid
+      minLength: 1
+      maxLength: 36
+      pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+      example: d78fc4e5-37ca-4da3-adf2-9b082bf92280
+      description: Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
   parameters:
     consentId:
       name: consentId
@@ -2182,13 +2283,15 @@ components:
     xFapiInteractionId:
       name: x-fapi-interaction-id
       in: header
-      description: 'Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação. A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.'
+      description: Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
       required: true
       schema:
         type: string
-        pattern: '^[a-zA-Z0-9][a-zA-Z0-9\-]{0,99}$'
+        format: uuid
         minLength: 1
-        maxLength: 100
+        maxLength: 36
+        pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        example: d78fc4e5-37ca-4da3-adf2-9b082bf92280
     XIdempotencyKey:
       name: x-idempotency-key
       in: header
@@ -2234,7 +2337,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     Forbidden:
@@ -2246,7 +2349,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     ForbiddenEnrollments:
@@ -2260,7 +2363,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     InternalServerError:
@@ -2272,7 +2375,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     MethodNotAllowed:
@@ -2284,7 +2387,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     NotAcceptable:
@@ -2296,7 +2399,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     NotFound:
@@ -2308,7 +2411,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     SiteIsOverloaded:
@@ -2317,25 +2420,6 @@ components:
         application/json; charset=utf-8:
           schema:
             $ref: '#/components/schemas/ResponseError'
-    TooManyRequests:
-      description: 'A operação foi recusada, pois muitas solicitações foram feitas dentro de um determinado período ou o limite global de requisições concorrentes foi atingido'
-      content:
-        application/json; charset=utf-8:
-          schema:
-            $ref: '#/components/schemas/ResponseError'
-      headers:
-        x-fapi-interaction-id:
-          description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
-          schema:
-            $ref: '#/components/schemas/XFapiInteractionId'
-        Retry-After:
-          description: |
-            Cabeçalho que indica o tempo (em segundos) que o cliente deverá aguardar para realizar uma nova tentativa de chamada. Este cabeçalho deverá estar presente quando o código HTTP de retorno for 429 Too many requests.
-          schema:
-            description: |
-              Cabeçalho que indica o tempo (em segundos) que o cliente deverá aguardar para realizar uma nova tentativa de chamada. Este cabeçalho deverá estar presente quando o código HTTP de retorno for 429 Too many requests.
-            type: integer
     UnprocessableEntityConsentsAuthorization:
       description: 'A solicitação foi bem-formada, mas não pôde ser processada devido à lógica de negócios específica da solicitação.'
       content:
@@ -2420,7 +2504,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     UnsupportedMediaType:
@@ -2432,7 +2516,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
     201EnrollmentsCreated:
@@ -2440,7 +2524,7 @@ components:
       headers:
         x-fapi-interaction-id:
           description: |
-            A detentora deve obrigatoriamente retornar o campo com o mesmo valor recebido da iniciadora.
+            Um UUID [RFC4122](https://tools.ietf.org/html/rfc4122) usado como um ID de correlação entre request e response. Campo de geração e envio obrigatório pela iniciadora (client) e o seu valor deve ser "espelhado" pela detentora (server) no cabeçalho de resposta. Caso não seja recebido ou se for recebido um valor inválido, a detentora deve gerar um x-fapi-interaction-id e retorná-lo na resposta com o HTTP status code 400. A iniciadora deve acatar o valor recebido da detentora.
           schema:
             $ref: '#/components/schemas/XFapiInteractionId'
       content:
